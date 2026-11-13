@@ -1,7 +1,7 @@
 Summary: A utility for getting files from remote servers (FTP, HTTP, and others)
 Name: curl
 Version: 7.61.1
-Release: 34%{?dist}.2
+Release: 34.1%{?dist}.2
 License: MIT
 Source: https://curl.haxx.se/download/%{name}-%{version}.tar.xz
 
@@ -192,6 +192,12 @@ Patch104: 0104-curl-7.19.7-localhost6.patch
 
 # tests: do not hard-wire ports of test servers
 Patch105: 0105-curl-7.61.1-test-ports.patch
+# CVE-2026-8927, CVE-2026-8458, CVE-2026-8932 - verbatim from Rocky Linux: https://git.rockylinux.org/staging/rpms/curl/-/raw/c468669b7eb14309d214cd430f7c1d00e242d7f4/SOURCES/0073-curl-7.61.1-CVE-2026-8927.patch
+Patch106: curl-7.61.1-CVE-2026-8927.patch
+# CVE-2026-8458, CVE-2026-8927, CVE-2026-8932 - verbatim from Rocky Linux: https://git.rockylinux.org/staging/rpms/curl/-/raw/c468669b7eb14309d214cd430f7c1d00e242d7f4/SOURCES/0074-curl-7.61.1-CVE-2026-8458.patch
+Patch107: curl-7.61.1-CVE-2026-8458.patch
+# CVE-2026-8932, CVE-2026-8927, CVE-2026-8458 - verbatim from Rocky Linux: https://git.rockylinux.org/staging/rpms/curl/-/raw/c468669b7eb14309d214cd430f7c1d00e242d7f4/SOURCES/0077-curl-7.76.1-CVE-2026-8932.patch
+Patch108: curl-7.61.1-CVE-2026-8932.patch
 
 Provides: curl-full = %{version}-%{release}
 Provides: webclient
@@ -412,6 +418,9 @@ git apply %{PATCH52}
 %patch59 -p1
 %patch60 -p1
 %patch61 -p1
+%patch106 -p1
+%patch107 -p1
+%patch108 -p1
 
 # make tests/*.py use Python 3
 sed -e '1 s|^#!/.*python|#!%{__python3}|' -i tests/*.py
@@ -574,6 +583,11 @@ rm -f ${RPM_BUILD_ROOT}%{_libdir}/libcurl.la
 %{_libdir}/libcurl.so.4.[0-9].[0-9].minimal
 
 %changelog
+* Fri Nov 13 2026 pmp <packager@ciq.com> - 7.61.1-34.1.2
+- Fix CVE-2026-8927
+- Fix CVE-2026-8458
+- Fix CVE-2026-8932
+
 * Wed Aug 14 2024 Jacek Migacz <jmigacz@redhat.com> - 7.61.1-34.el8_10.2
 - provide common cleanup method for push headers (CVE-2024-2398)
 
