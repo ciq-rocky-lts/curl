@@ -1,9 +1,13 @@
 Summary: A utility for getting files from remote servers (FTP, HTTP, and others)
 Name: curl
-Version: 8.20.0
-Release: 1%{?dist}.1
+Version: 8.23.0
+Release: 1.1%{?dist}.1
 License: curl
 Source: https://curl.se/download/%{name}-%{version}.tar.xz
+
+# upstream fix for a regression since 8.22.0: poll an idle connection for
+# pending input on every reuse (curl ef6b17cf12d4, carried by Fedora 8.23.0-3)
+Patch1:   0001-curl-8.23.0-conncache-poll-idle-connection.patch
 Provides: curl-full = %{version}-%{release}
 Provides: webclient
 URL: https://curl.se/
@@ -203,13 +207,6 @@ be installed.
 %prep
 %autosetup -n %{name}-%{version_no_tilde} -p1
 
-# disable test 1801
-# <https://github.com/bagder/curl/commit/21e82bd6#commitcomment-12226582>
-printf "1801\n" >>tests/data/DISABLED
-
-# temporary disable test 1085 it passes on Fedora but fails on ELN
-printf "1085\n" >>tests/data/DISABLED
-
 # test 303: raise timeout from 8s to 20s so it doesn't expire during TLS
 # handshake under valgrind
 %ifarch x86_64
@@ -224,7 +221,7 @@ printf "609\n610\n611\n612\n613\n614\n615\n616\n617\n618\n" >>tests/data/DISABLE
 printf "619\n620\n621\n622\n623\n624\n625\n626\n627\n628\n" >>tests/data/DISABLED
 printf "629\n630\n631\n633\n634\n635\n636\n637\n638\n639\n" >>tests/data/DISABLED
 printf "640\n641\n642\n656\n664\n665\n" >>tests/data/DISABLED
-printf "1446\n1459\n1583\n2004\n2007\n" >>tests/data/DISABLED
+printf "1446\n1459\n1583\n1725\n2004\n2007\n" >>tests/data/DISABLED
 printf "3021\n3022\n" >>tests/data/DISABLED
 %endif
 
@@ -233,9 +230,6 @@ printf "3021\n3022\n" >>tests/data/DISABLED
 sed -e 's|NUM_THREADS 1000$|NUM_THREADS 256|' \
     -i tests/libtest/lib3026.c
 %endif
-
-# adapt test 323 for updated OpenSSL
-sed -e 's|^35$|35,52|' -i tests/data/test323
 
 # use localhost6 instead of ip6-localhost in the curl test-suite
 (
@@ -353,15 +347,23 @@ for size in minimal full; do (
     export LD_LIBRARY_PATH="${PWD}/lib/.libs"
 
     # tests that must run in serial to avoid intermittent failures under parallel execution
-    serial_tests="766 1399 2402 2404 2500 2502 3300 3301"
+    serial_tests="766 1399 1451 2402 2404 2500 2502 3231 3232"
     serial_excludes=$(for t in $serial_tests; do printf ' !%s' "$t"; done)
-    # run the bulk of tests in parallel, excluding serial ones
+    # threaded unit tests (keyword "threads"): under valgrind these can report
+    # a "possibly lost" TLS block from pthread_create when a thread-pool worker
+    # outlives the test; upstream retries them (curl #23496, #23552)
+    threaded_tests="3300 3301 3306"
+    threaded_excludes=$(for t in $threaded_tests; do printf ' !%s' "$t"; done)
+    # run the bulk of tests in parallel, excluding serial and threaded ones
     # cap at 64 jobs to avoid overwhelming system resources on high-CPU machines
     test_jobs=$(( %{_smp_build_ncpus} * 7 ))
     [ $test_jobs -gt 64 ] && test_jobs=64
-    TFLAGS="-v -j${test_jobs}${serial_excludes}" make test-nonflaky
+    TFLAGS="-v -j${test_jobs}${serial_excludes}${threaded_excludes}" make test-nonflaky
     # run serial tests one at a time
     TFLAGS="-v ${serial_tests}" make test-nonflaky
+    # run threaded tests one at a time; --retry applies only to this run, so
+    # only these tests can be retried, and they must still pass
+    TFLAGS="-v --retry=3 ${threaded_tests}" make test-nonflaky
 )
 done
 
@@ -421,7 +423,7 @@ rm -f ${RPM_BUILD_ROOT}%{_mandir}/man1/wcurl.1*
 %{_libdir}/libcurl.so.4.[0-9].[0-9]
 
 %files -n libcurl-devel
-%doc docs/examples/*.c docs/examples/Makefile.example docs/INTERNALS.md
+%doc docs/examples/*.c docs/examples/Makefile.example docs/DEPENDENCIES.md
 %doc docs/CONTRIBUTE.md docs/libcurl/ABI.md
 %{_bindir}/curl-config*
 %{_includedir}/curl
@@ -441,6 +443,16 @@ rm -f ${RPM_BUILD_ROOT}%{_mandir}/man1/wcurl.1*
 %{_libdir}/libcurl.so.4.[0-9].[0-9].minimal
 
 %changelog
+* Fri Nov 13 2026 Jeff Uphoff <juphoff@ciq.com> - 8.23.0-1.1.1
+- Run threaded unit tests (3300, 3301, 3306) in their own pass with retries
+  to absorb valgrind "possibly lost" thread-race reports (curl #23496, #23552)
+
+* Fri Nov 13 2026 Jeff Uphoff <juphoff@ciq.com> - 8.23.0-1.1
+- Roll forward to curl 8.23.0 for CIQ LTS 9.6
+- Fixes CVE-2026-18924 (HTTP/2 server push UAF with shared connections)
+- Fixes CVE-2026-19931 (wrong connection reuse with Negotiate auth)
+- Add upstream conncache fix for a regression since 8.22.0 (curl ef6b17cf12d4)
+
 * Thu Jun 18 2026 Jeremy Allison <jallison@ciq.com> - 8.20.0-1.1
 - Import and release to CIQ LTS 9.6
 
